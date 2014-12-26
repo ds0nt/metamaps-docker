@@ -1,6 +1,10 @@
 # Metamaps Docker
 
-[Metamaps](https://github.com/metamaps/metamaps_gen002) is a mind mapping platform. This repository is some scripts to get yourself a docker container up and running, for use in development and production. Tweak it as necessary and open issues for any annoyances you come across.
+Metamaps is a free and AGPL open source technology for changemakers, innovators, educators and students. It enables individuals and communities to build and visualize their shared knowledge and unlock their collective intelligence. You can find out about more about the project at the [blog](http://blog.metamaps.cc).
+
+You can find a version of this software running at [metamaps.cc](http://metamaps.cc), where the technology is being tested in a private beta.
+
+This repository is some scripts to get yourself a docker container up and running, for use in development and production. Tweak it as necessary and open issues *specifically related* to annoyances or problems with the dockerized Metamaps here. Please use the [main metamaps respository](https://github.com/metamaps/metamaps_gen002) for all other issues related to the metamaps platform itself. 
 
 If you don't have docker installed, you should probably Google it. 
 
