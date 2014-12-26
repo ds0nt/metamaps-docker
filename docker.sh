@@ -4,7 +4,7 @@ DIR=$(pwd)
 VOLUMES=$DIR/volumes
 
 #image
-_metamaps_img=metamaps
+_metamaps_img="metamaps"
 
 #containers
 _metamaps="mm-server"
@@ -56,70 +56,96 @@ has_target () {
 		return $db
 	fi
 
-	if [[ "$1" == "all" ]]; then
-		return $db && $mm
-	fi
-
 	return 1
 }
 
 
-# Build containers from Dockerfiles
-build () {	
+prepare () {
 	[[ ! -d src ]] && \
 		git clone https://github.com/metamaps/metamaps_gen002 src
-	[[ ! -f src/Dockerfile ]] && \
-		cp config/Dockerfile src/Dockerfile
-	[[ ! -f src/config/database.yml ]] && \
-		cp config/database.yml src/config/database.yml
+	cp -v config/Dockerfile src/Dockerfile
+	cp -v config/database.yml src/config/database.yml
+}
 
+# Build containers from Dockerfiles
+build () {	
 	verify_context
 	docker build -t $_metamaps_img src/
 }
 
-# Start
+# Run and link the containers
+run () {	
+	has_target db && run_db && exit $?;
+	has_target mm && run_mm && exit $?;
+}
+
+run_db () {
+	echo "Running Postgres Database"
+	docker run -d \
+		-v $VOLUMES/data:/data \
+		-e POSTGRES_USER=$POSTGRES_USER \
+		-e POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
+		--name $_postgres postgres
+}
+
+# run rails
+run_mm () {
+
+	echo "[docker.sh] Verifying DB Container"
+	_db=$(docker ps | grep -E "\s+$_postgres" | cut -d' ' -f1-1)
+	[[ $_db ]] || graceful_exit "Postgres DB is not running";
+	echo "Found" $_db
+	
+
+	echo "[docker.sh] Cleaning Any MM Containers"
+	for container in $(mm_containers); do		
+		echo "Stopping" $(docker stop $container)
+		echo "Removing" $(docker rm $container)
+	done;
+
+	echo "[docker.sh] Running MM"
+	docker run -d -p 8080:3000 \
+		--link $_postgres:$POSTGRES_HOST \
+		-e POSTGRES_HOST=$POSTGRES_HOST \
+		-e POSTGRES_PORT=$POSTGRES_PORT \
+		-e POSTGRES_USER=$POSTGRES_USER \
+		-e POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
+		--name $_metamaps $_metamaps_img "$@"
+}
+
+mm_containers () {
+	docker ps -a | grep -E "\s+$_metamaps" | cut -d' ' -f1-1	
+}
+
+db_containers () {
+	docker ps -a | grep -E "\s+$_postgres" | cut -d' ' -f1-1
+}
+
+# get our containers by 
+containers () {	
+	has_target mm && mm_containers
+	has_target db && db_containers
+}
+
+
+# Start containers
 start () {
 	has_target db && docker start $_postgres
 	has_target mm && docker start $_metamaps
 }
 
-# Run and link the containers
-run () {
-	has_target db && \
-		docker run -d \
-			-v $VOLUMES/data:/data \
-			-e POSTGRES_USER=$POSTGRES_USER \
-			-e POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
-			--name $_postgres postgres
-
-	has_target mm || return 0;
-	serve
-}
-
-# get our containers by 
-containers () {	
-	if has_target all; then
-		regex="$_postgres|$_metamaps"
-	else
-		has_target mm && regex="$_metamaps"
-		has_target db && regex="$_postgres"			
-	fi
-
-	docker ps -a | grep -E $regex | cut -d' ' -f1-1
-}
-
-# Stop and remove postgres or metamaps containers
+# Stop containers
 stop () {	
 	for container in $(containers); do
-		docker stop $container
+		echo "Stopping" $(docker stop $container)
 	done;
 }
 
 # Stop and remove postgres or metamaps containers
 clean () {
-	for container in $(containers); do
-		docker stop $container
-		docker rm $container
+	for container in $(containers); do		
+		echo "Stopping" $(docker stop $container)
+		echo "Removing" $(docker rm $container)
 	done;
 }
 
@@ -130,20 +156,15 @@ seed () {
 	docker exec -t $_metamaps bundle exec rake db:fixtures:load
 }
 
-# run rails
-serve () {
-	docker run -d -p 8080:3000 \
-		--link $_postgres:db \
-		-e POSTGRES_USER=$POSTGRES_USER \
-		-e POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
-		--name $_metamaps $_metamaps_img
-}
-
 
 CMD=$1; shift
 set_target $1; shift
 
 case $CMD in
+	"prepare")
+		prepare "$@"
+		exit $? ;;
+
 	"build")
 		build "$@"
 		exit $? ;;
@@ -168,19 +189,17 @@ case $CMD in
 		seed "$@"
 		exit $? ;;
 
-	"serve")
-		serve "$@"
-		exit $? ;;
-
 esac
 
-graceful_exit -e "Usage: ./dev.sh <command>" \
-	"\n\n\tAvailable Commands:" \
-	"\n\n\tbuild:  \n\t    build command" \
-	"\n\n\tstart:  \n\t    start command" \
-	"\n\n\trun:  \n\t    run command" \
-	"\n\n\tstop:  \n\t    stop command" \
-	"\n\n\tclean:  \n\t    clean command" \
-	"\n\n\tgems:  \n\t    metamaps_init_gems command" \
-	"\n\n\tseed:  \n\t    metamaps_seed_db command" \
-	"\n\n\tserve:  \n\t    metamaps_ser command" 
+graceful_exit -e "Usage: ./docker.sh COMMAND [OPTIONS]" \
+	"\n    Basic Commands" \
+	"\n    prepare  downloads git repository into src and applies configuration." \
+	"\n    build    build the metamaps docker image" \
+	"\n    run db   runs metamaps postgres" \
+	"\n    run mm   runs metamaps server" \
+	"\n    seed     seeds the postgres database" \
+	"\n" \
+	"\n    Lifecycle Commands -- [mm|db|all]" \
+	"\n    start all   starts stopped containers" \
+	"\n    stop all    stop containers" \
+	"\n    clean all   stops and removes containers" \

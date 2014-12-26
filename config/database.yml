@@ -1,8 +1,8 @@
 development:
   min_messages: WARNING
   adapter: postgresql
-  host: db
-  port: 5432
+  host: <%= ENV['POSTGRES_HOST'] %>
+  port: <%= ENV['POSTGRES_PORT'] %>
   encoding: unicode
   database: postgres
   pool: 5
